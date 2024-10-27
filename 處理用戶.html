@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>比賽計分板</title>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            animation: gradientBG 15s ease infinite;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .scoreboard {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255,255,255,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .scoreboard:hover {
+            transform: translateY(-5px);
+        }
+
+        .teams {
+            display: flex;
+            justify-content: space-around;
+            margin: 30px 0;
+            gap: 40px;
+        }
+
+        .team {
+            text-align: center;
+            padding: 25px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .team:hover {
+            transform: scale(1.05);
+        }
+
+        .team-blue {
+            color: #4a90e2;
+            box-shadow: 0 0 20px rgba(74,144,226,0.3);
+        }
+
+        .team-red {
+            color: #e24a4a;
+            box-shadow: 0 0 20px rgba(226,74,74,0.3);
+        }
+
+        .score {
+            font-size: 60px;
+            margin: 15px 0;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            font-weight: bold;
+        }
+
+        .score-controls button {
+            padding: 8px 20px;
+            margin: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .winner {
+            font-size: 28px;
+            margin-top: 25px;
+            padding: 15px;
+            background: rgba(255, 215, 0, 0.3);
+            border-radius: 10px;
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0% { box-shadow: 0 0 5px rgba(255,215,0,0.5); }
+            50% { box-shadow: 0 0 20px rgba(255,215,0,0.8); }
+            100% { box-shadow: 0 0 5px rgba(255,215,0,0.5); }
+        }
+
+        button {
+            background: #ffffff;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 8px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            color: #2a5298;
+        }
+
+        button:hover {
+            background: #e0e0e0;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3);
+        }
+
+        h2 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+        }
+
+        .control-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="scoreboard">
+        <h1>比賽計分板</h1>
+        <div class="teams">
+            <div class="team team-blue">
+                <h2>藍隊</h2>
+                <div class="score" id="blueScore">0</div>
+                <div class="score-controls">
+                    <button onclick="updateScore('blue', 1)">+1</button>
+                    <button onclick="updateScore('blue', -1)">-1</button>
+                </div>
+            </div>
+            <div class="team team-red">
+                <h2>紅隊</h2>
+                <div class="score" id="redScore">0</div>
+                <div class="score-controls">
+                    <button onclick="updateScore('red', 1)">+1</button>
+                    <button onclick="updateScore('red', -1)">-1</button>
+                </div>
+            </div>
+        </div>
+        <div class="control-buttons">
+            <button onclick="declareWinner()">宣布勝利</button>
+            <button onclick="cancelWinner()">取消勝利</button>
+        </div>
+        <div id="winnerAnnouncement" class="winner"></div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDAw3LKSDHHwasOhN0l63lO4I-AO1xeGGU",
+            authDomain: "tmjh113.firebaseapp.com",
+            projectId: "tmjh113",
+            storageBucket: "tmjh113.appspot.com",
+            messagingSenderId: "936878916477",
+            appId: "1:936878916477:web:cbff479db9898b0a218214",
+            measurementId: "G-J5WT01ZLBD"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        async function loadScores() {
+            const scoreDoc = await db.collection('gameScores').doc('currentGame').get();
+            if (scoreDoc.exists) {
+                const data = scoreDoc.data();
+                document.getElementById('blueScore').textContent = data.blueScore;
+                document.getElementById('redScore').textContent = data.redScore;
+                if (data.winner) {
+                    document.getElementById('winnerAnnouncement').textContent = 
+                        `${data.winner}獲勝！`;
+                } else {
+                    document.getElementById('winnerAnnouncement').textContent = '';
+                }
+            } else {
+                await db.collection('gameScores').doc('currentGame').set({
+                    blueScore: 0,
+                    redScore: 0,
+                    winner: null
+                });
+            }
+        }
+
+        async function updateScore(team, change) {
+            const scoreElement = document.getElementById(`${team}Score`);
+            let newScore = parseInt(scoreElement.textContent) + change;
+            if (newScore < 0) newScore = 0;
+            
+            const update = {};
+            update[`${team}Score`] = newScore;
+            
+            await db.collection('gameScores').doc('currentGame').update(update);
+            scoreElement.textContent = newScore;
+        }
+
+        async function declareWinner() {
+            const blueScore = parseInt(document.getElementById('blueScore').textContent);
+            const redScore = parseInt(document.getElementById('redScore').textContent);
+            
+            let winner;
+            if (blueScore > redScore) {
+                winner = '藍隊';
+            } else if (redScore > blueScore) {
+                winner = '紅隊';
+            } else {
+                winner = '平局';
+            }
+
+            await db.collection('gameScores').doc('currentGame').update({
+                winner: winner
+            });
+
+            document.getElementById('winnerAnnouncement').textContent = 
+                `${winner}獲勝！`;
+        }
+
+        async function cancelWinner() {
+            await db.collection('gameScores').doc('currentGame').update({
+                winner: null
+            });
+            document.getElementById('winnerAnnouncement').textContent = '';
+        }
+
+        db.collection('gameScores').doc('currentGame')
+            .onSnapshot((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    document.getElementById('blueScore').textContent = data.blueScore;
+                    document.getElementById('redScore').textContent = data.redScore;
+                    if (data.winner) {
+                        document.getElementById('winnerAnnouncement').textContent = 
+                            `${data.winner}獲勝！`;
+                    } else {
+                        document.getElementById('winnerAnnouncement').textContent = '';
+                    }
+                }
+            });
+
+        loadScores();
+    </script>
+</body>
+</html>
